@@ -1,0 +1,217 @@
+zabbix_export:
+  version: '6.0'
+  date: '2023-01-26T15:06:07Z'
+  groups:
+    -
+      uuid: a571c0d144b14fd4a87a9d9b2aa9fcd6
+      name: Templates/Applications
+  templates:
+    -
+      uuid: 5eb48d2fb9774442a2edc1a8906b119b
+      template: 'Template ClamAV'
+      name: 'Template ClamAV'
+      description: 'https://github.com/awalende/zabbix-templates'
+      groups:
+        -
+          name: Templates/Applications
+      items:
+        -
+          uuid: 03603a316ced48e499e4f309bee1f019
+          name: 'Data scanned'
+          type: DEPENDENT
+          key: clamav.datascanned
+          delay: '0'
+          history: 30d
+          value_type: FLOAT
+          units: B
+          description: 'Size of scanned files'
+          preprocessing:
+            -
+              type: REGEX
+              parameters:
+                - 'Data scanned: (\d*\.\d*)'
+                - \1
+            -
+              type: DISCARD_UNCHANGED
+              parameters:
+                - ''
+            -
+              type: MULTIPLIER
+              parameters:
+                - '1048576'
+          master_item:
+            key: 'vfs.file.contents[{$CLAM.LOG.PATH}]'
+          tags:
+            -
+              tag: Application
+              value: ClamAV
+        -
+          uuid: 87cac0df6b6a45369d509c2c9b514df6
+          name: 'Number of infected Files'
+          type: DEPENDENT
+          key: clamav.infected
+          delay: '0'
+          history: 30d
+          description: 'Count of infected files found by ClamAV.'
+          preprocessing:
+            -
+              type: REGEX
+              parameters:
+                - 'Infected files: (\d*)'
+                - \1
+            -
+              type: DISCARD_UNCHANGED
+              parameters:
+                - ''
+          master_item:
+            key: 'vfs.file.contents[{$CLAM.LOG.PATH}]'
+          tags:
+            -
+              tag: Application
+              value: ClamAV
+          triggers:
+            -
+              uuid: 0e113ca8ad084d25bb16c33310f8c7c2
+              expression: 'last(/Template ClamAV/clamav.infected)>0'
+              recovery_mode: RECOVERY_EXPRESSION
+              recovery_expression: 'last(/Template ClamAV/clamav.infected)=0'
+              name: 'ClamAV: There are {ITEM.VALUE} infected files!'
+              priority: HIGH
+              description: 'ClamAV found infected files. Check the last log-entries!'
+              manual_close: 'YES'
+              tags:
+                -
+                  tag: Application
+                  value: ClamAV
+        -
+          uuid: f7c3ac96dd42499fad304b623f6a8112
+          name: 'ClamAV found Virus'
+          type: DEPENDENT
+          key: clamav.infected.path
+          delay: '0'
+          history: 30d
+          trends: '0'
+          value_type: TEXT
+          description: 'Path and definition of infected File. Currently only supports printing of the first infected file found.'
+          preprocessing:
+            -
+              type: DISCARD_UNCHANGED
+              parameters:
+                - ''
+            -
+              type: REGEX
+              parameters:
+                - '(.*): (.*) FOUND'
+                - '\1 \2'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: None
+          master_item:
+            key: 'vfs.file.contents[{$CLAM.LOG.PATH}]'
+          tags:
+            -
+              tag: Application
+              value: ClamAV
+          triggers:
+            -
+              uuid: 2188e29fe58e497e809f13e0761f6315
+              expression: 'find(/Template ClamAV/clamav.infected.path,,"eq","None")=0'
+              recovery_mode: RECOVERY_EXPRESSION
+              recovery_expression: 'find(/Template ClamAV/clamav.infected.path,,"eq","None")=1'
+              name: 'ClamAV: Found Virus: {ITEM.VALUE}'
+              priority: HIGH
+              manual_close: 'YES'
+              tags:
+                -
+                  tag: Application
+                  value: ClamAV
+        -
+          uuid: 0189734342b140aab8fd97b1efc71c85
+          name: 'Scan duration'
+          type: DEPENDENT
+          key: clamav.scanduration
+          delay: '0'
+          history: 30d
+          value_type: FLOAT
+          units: s
+          description: 'The duration of the scan process in seconds.'
+          preprocessing:
+            -
+              type: REGEX
+              parameters:
+                - 'Time: (\d*\.\d*)'
+                - \1
+            -
+              type: DISCARD_UNCHANGED
+              parameters:
+                - ''
+          master_item:
+            key: 'vfs.file.contents[{$CLAM.LOG.PATH}]'
+          tags:
+            -
+              tag: Application
+              value: ClamAV
+        -
+          uuid: 8581ccab22404cfaa2021dc80418aa85
+          name: 'ClamAV Last Scan Log'
+          key: 'vfs.file.contents[{$CLAM.LOG.PATH}]'
+          delay: 5m
+          history: 30d
+          trends: '0'
+          value_type: TEXT
+          description: 'This includes the whole output of the clamscan process.'
+          preprocessing:
+            -
+              type: DISCARD_UNCHANGED
+              parameters:
+                - ''
+          tags:
+            -
+              tag: Application
+              value: ClamAV
+        -
+          uuid: a432e8227fca42be86578e324ff8f419
+          name: 'ClamAV Last Scan Date'
+          key: 'vfs.file.time[{$CLAM.LOG.PATH}]'
+          delay: 5m
+          history: 30d
+          trends: '0'
+          units: unixtime
+          description: 'Gets last modification in unix-time of log file, so that we can calculate too old scans.'
+          preprocessing:
+            -
+              type: DISCARD_UNCHANGED
+              parameters:
+                - ''
+          tags:
+            -
+              tag: Application
+              value: ClamAV
+          triggers:
+            -
+              uuid: 08fd3f214d0c4780b8d53de948bccd9f
+              expression: 'fuzzytime(/Template ClamAV/vfs.file.time[{$CLAM.LOG.PATH}],{$CLAM.TTL.SCAN})=0'
+              recovery_mode: NONE
+              name: 'ClamAV: Last Scan hasn''t been run recently'
+              priority: INFO
+              description: 'Check if the clamscan.timer and clamscan.service is running and that the outputfile is readable by Zabbix.'
+              manual_close: 'YES'
+              tags:
+                -
+                  tag: Application
+                  value: ClamAV
+      tags:
+        -
+          tag: class
+          value: software
+        -
+          tag: target
+          value: clamav
+      macros:
+        -
+          macro: '{$CLAM.LOG.PATH}'
+          value: /var/log/clamav/last_scan.log
+          description: 'Path to the clamscan output file'
+        -
+          macro: '{$CLAM.TTL.SCAN}'
+          value: '259200'
+          description: 'Trigger an alert after n-seconds when a scan has not been done recently. 72 hours are default.'
